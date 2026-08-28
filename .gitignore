@@ -31,4 +31,3 @@ htmlcov/
 *.db
 *.sqlite3
 .DS_Store
-=0.25.0

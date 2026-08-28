@@ -14,6 +14,7 @@ from app.repositories.task import TaskRepository
 from app.schemas.pagination import CursorPageResponse, OffsetPageResponse
 from app.schemas.task import TaskCreate, TaskFilterParams, TaskResponse, TaskUpdate
 from app.services.task import TaskService
+from app.websockets.hub import ws_hub
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
 
@@ -30,7 +31,7 @@ async def create_task(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> Task:
     service = TaskService(session, ctx.organization_id)
-    return await service.create_task(
+    task = await service.create_task(
         project_id=payload.project_id,
         reporter_id=ctx.user.id,
         title=payload.title,
@@ -38,6 +39,20 @@ async def create_task(
         priority=payload.priority,
         assignee_id=payload.assignee_id,
     )
+
+    # Real-time WebSocket broadcast to project room across all nodes
+    await ws_hub.broadcast_to_room(
+        payload.project_id,
+        event_type="TASK_CREATED",
+        data={
+            "task_id": str(task.id),
+            "title": task.title,
+            "priority": task.priority.value,
+            "status": task.status.value,
+        },
+    )
+
+    return task
 
 
 @router.get(
@@ -139,12 +154,23 @@ async def update_task(
 ) -> Task:
     service = TaskService(session, ctx.organization_id)
     if payload.status:
-        return await service.update_task_status_occ(
+        updated_task = await service.update_task_status_occ(
             task_id=task_id,
             actor_id=ctx.user.id,
             new_status=payload.status,
             expected_version=payload.expected_version,
         )
+        # Broadcast status update
+        await ws_hub.broadcast_to_room(
+            updated_task.project_id,
+            event_type="TASK_UPDATED",
+            data={
+                "task_id": str(task_id),
+                "status": updated_task.status.value,
+                "version_id": updated_task.version_id,
+            },
+        )
+        return updated_task
 
     repo = TaskRepository(session, ctx.organization_id)
     task = await repo.get_by_id(task_id)
@@ -167,6 +193,19 @@ async def update_task(
     task.version_id += 1
     await session.commit()
     await session.refresh(task)
+
+    # Broadcast task update
+    await ws_hub.broadcast_to_room(
+        task.project_id,
+        event_type="TASK_UPDATED",
+        data={
+            "task_id": str(task_id),
+            "title": task.title,
+            "priority": task.priority.value,
+            "version_id": task.version_id,
+        },
+    )
+
     return task
 
 
@@ -181,7 +220,19 @@ async def delete_task(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> None:
     repo = TaskRepository(session, ctx.organization_id)
+    task = await repo.get_by_id(task_id)
+    if not task:
+        raise EntityNotFoundException("Task", task_id)
+
+    project_id = task.project_id
     success = await repo.soft_delete(task_id)
     if not success:
         raise EntityNotFoundException("Task", task_id)
     await session.commit()
+
+    # Broadcast task deletion
+    await ws_hub.broadcast_to_room(
+        project_id,
+        event_type="TASK_DELETED",
+        data={"task_id": str(task_id)},
+    )

@@ -6,9 +6,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import RequireRole, TenantContext, get_db_session
 from app.models.enums import OrgRole
+from app.repositories.task import TaskRepository
 from app.schemas.comment import CommentCreate, CommentResponse, CommentUpdate
 from app.schemas.pagination import CursorPageResponse
 from app.services.comment import CommentService
+from app.websockets.hub import ws_hub
 
 router = APIRouter(prefix="/tasks/{task_id}/comments", tags=["Comments"])
 
@@ -17,7 +19,7 @@ router = APIRouter(prefix="/tasks/{task_id}/comments", tags=["Comments"])
     "",
     response_model=CommentResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Add a comment to a task (Requires Member)",
+    summary="Add a comment to a task and broadcast real-time update (Requires Member)",
 )
 async def create_comment(
     task_id: uuid.UUID,
@@ -27,7 +29,8 @@ async def create_comment(
 ) -> CommentResponse:
     service = CommentService(session, ctx.organization_id)
     comment = await service.add_comment(task_id, ctx.user.id, payload)
-    return CommentResponse(
+
+    response = CommentResponse(
         id=comment.id,
         organization_id=comment.organization_id,
         task_id=comment.task_id,
@@ -38,6 +41,23 @@ async def create_comment(
         is_edited=comment.is_edited,
         created_at=comment.created_at,
     )
+
+    # Broadcast real-time event to project room
+    task_repo = TaskRepository(session, ctx.organization_id)
+    task = await task_repo.get_by_id(task_id)
+    if task:
+        await ws_hub.broadcast_to_room(
+            task.project_id,
+            event_type="COMMENT_ADDED",
+            data={
+                "task_id": str(task_id),
+                "comment_id": str(comment.id),
+                "author": ctx.user.full_name,
+                "content": comment.content,
+            },
+        )
+
+    return response
 
 
 @router.get(
@@ -70,7 +90,8 @@ async def update_comment(
 ) -> CommentResponse:
     service = CommentService(session, ctx.organization_id)
     comment = await service.update_comment(comment_id, ctx.user.id, ctx.role, payload)
-    return CommentResponse(
+
+    response = CommentResponse(
         id=comment.id,
         organization_id=comment.organization_id,
         task_id=task_id,
@@ -81,3 +102,19 @@ async def update_comment(
         is_edited=comment.is_edited,
         created_at=comment.created_at,
     )
+
+    # Broadcast real-time update
+    task_repo = TaskRepository(session, ctx.organization_id)
+    task = await task_repo.get_by_id(task_id)
+    if task:
+        await ws_hub.broadcast_to_room(
+            task.project_id,
+            event_type="COMMENT_UPDATED",
+            data={
+                "task_id": str(task_id),
+                "comment_id": str(comment.id),
+                "content": comment.content,
+            },
+        )
+
+    return response

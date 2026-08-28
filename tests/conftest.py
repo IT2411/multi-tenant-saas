@@ -10,6 +10,7 @@ from app.core.database import session_manager
 from app.core.redis import redis_client
 from app.main import app
 from app.services.queue import JobQueueService
+from app.websockets.hub import ws_hub
 
 test_engine = create_async_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
@@ -46,7 +47,12 @@ async def _cleanup_pools() -> AsyncGenerator[None, None]:
         await JobQueueService._pool.close()
         JobQueueService._pool = None
 
-    # 3. Flush Redis test db & close connection pool
+    # 3. Clean WebSocket Hub Sub Client
+    if ws_hub._sub_client is not None:
+        await ws_hub._sub_client.aclose()
+        ws_hub._sub_client = None
+
+    # 4. Flush Redis test db & close connection pool
     try:
         await redis_client.flushdb()
     finally:

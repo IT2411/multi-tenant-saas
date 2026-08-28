@@ -33,7 +33,7 @@ class AppSettings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
-    # Security (with fallback default for local dev)
+    # Security
     SECRET_KEY: str = "09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7"
     ALLOWED_ORIGINS: Annotated[list[AnyHttpUrl] | list[str], BeforeValidator(parse_cors)] = [
         "http://localhost:3000"
@@ -55,6 +55,13 @@ class AppSettings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
     REDIS_PASSWORD: str | None = None
+
+    # Object Storage (S3 / MinIO)
+    S3_ENDPOINT_URL: str | None = "http://localhost:9000"
+    S3_ACCESS_KEY: str = "minioadmin"
+    S3_SECRET_KEY: str = "minioadminpassword"
+    S3_BUCKET_NAME: str = "saas-attachments"
+    S3_REGION_NAME: str = "us-east-1"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
