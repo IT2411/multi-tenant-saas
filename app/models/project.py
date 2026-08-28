@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -34,6 +34,9 @@ class Project(Base, UUIDPrimaryKeyMixin, TenantScopedMixin, TimestampMixin):
     key: Mapped[str] = mapped_column(String(10), nullable=False)  # e.g., "PROJ"
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    # Optimistic Concurrency Control (OCC)
+    version_id: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
 
     organization: Mapped["Organization"] = relationship(back_populates="projects")
     team: Mapped["Team | None"] = relationship(back_populates="projects")

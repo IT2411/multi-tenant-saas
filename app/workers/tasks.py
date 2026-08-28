@@ -1,7 +1,12 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
+from sqlalchemy import delete
+
+from app.core.database import session_manager
+from app.models.task import Task
 
 logger = structlog.get_logger(__name__)
 
@@ -39,3 +44,26 @@ async def send_task_notification(
     )
     await asyncio.sleep(0.05)
     return True
+
+
+async def cleanup_soft_deleted_tasks_job(_ctx: dict[str, Any], days_threshold: int = 30) -> int:
+    """Purges soft-deleted tasks older than the retention threshold."""
+    cutoff_time = datetime.now(UTC) - timedelta(days=days_threshold)
+    logger.info("cleanup_soft_deleted_tasks_started", cutoff=cutoff_time.isoformat())
+
+    async with session_manager.sessionmaker() as session:
+        stmt = (
+            delete(Task)
+            .where(
+                Task.is_deleted.is_(True),
+                Task.deleted_at <= cutoff_time,
+            )
+            .returning(Task.id)
+        )
+        result = await session.execute(stmt)
+        deleted_ids = result.scalars().all()
+        await session.commit()
+
+        count = len(deleted_ids)
+        logger.info("cleanup_soft_deleted_tasks_completed", purged_count=count)
+        return count

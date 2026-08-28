@@ -41,11 +41,11 @@ async def test_cache_hit_and_invalidation_lifecycle(client: AsyncClient) -> None
     assert cached is not None
     assert cached.name == "Cache Test Project"
 
-    # 4. Update Project (Triggers Cache Invalidation)
+    # 4. Update Project with OCC expected_version (Triggers Cache Invalidation)
     update_resp = await client.patch(
         f"/api/v1/projects/{proj_id}",
         headers=headers,
-        json={"name": "Updated Cache Project"},
+        json={"name": "Updated Cache Project", "expected_version": 1},
     )
     assert update_resp.status_code == 200
 
@@ -56,7 +56,6 @@ async def test_cache_hit_and_invalidation_lifecycle(client: AsyncClient) -> None
 
 @pytest.mark.asyncio
 async def test_sliding_window_rate_limiting(client: AsyncClient) -> None:
-    # Rapid login requests from the same IP (Limit is 5 per 60s)
     email = f"ratelimit-{uuid.uuid4().hex[:6]}@saas.com"
     payload = {"email": email, "password": "WrongPassword"}
 
@@ -65,7 +64,6 @@ async def test_sliding_window_rate_limiting(client: AsyncClient) -> None:
         res = await client.post("/api/v1/auth/login", json=payload)
         responses.append(res)
 
-    # The 6th request must trigger HTTP 429 Too Many Requests
     assert responses[-1].status_code == 429
     assert "Retry-After" in responses[-1].headers
     assert "X-RateLimit-Limit" in responses[-1].headers
