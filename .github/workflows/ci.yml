@@ -69,16 +69,6 @@ jobs:
           --health-timeout 3s
           --health-retries 5
 
-      minio:
-        image: minio/minio:latest
-        env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadminpassword
-        ports:
-          - 9000:9000
-        options: >-
-          server /data
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -88,6 +78,11 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+
+      - name: Start MinIO Object Storage
+        run: |
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadminpassword minio/minio server /data
+          timeout 30 bash -c 'until curl -s http://localhost:9000/minio/health/live; do sleep 1; done'
 
       - name: Install Application & Test Harness
         run: |
