@@ -20,6 +20,7 @@ from app.schemas.organization import (
     OrgMemberDetailResponse,
     OrgMemberInviteRequest,
 )
+from app.services.queue import JobQueueService
 
 router = APIRouter(prefix="/organizations", tags=["Organizations"])
 
@@ -101,7 +102,7 @@ async def list_organization_members(
     "/current/members/invite",
     response_model=OrgMemberDetailResponse,
     status_code=status.HTTP_201_CREATED,
-    summary="Invite existing user to organization (Requires Admin)",
+    summary="Invite existing user and dispatch background notification (Requires Admin)",
 )
 async def invite_member(
     payload: OrgMemberInviteRequest,
@@ -109,6 +110,7 @@ async def invite_member(
     session: Annotated[AsyncSession, Depends(get_db_session)],
 ) -> OrgMemberDetailResponse:
     user_repo = UserRepository(session)
+    org_repo = OrganizationRepository(session)
     member_repo = OrganizationMemberRepository(session)
 
     user = await user_repo.get_by_email(payload.email)
@@ -125,6 +127,16 @@ async def invite_member(
         role=payload.role,
     )
     await session.commit()
+
+    # Enqueue background task to send notification email
+    org = await org_repo.get_by_id(ctx.organization_id)
+    org_name = org.name if org else "Workspace"
+    await JobQueueService.enqueue(
+        "send_invitation_email",
+        user.email,
+        org_name,
+        ctx.user.full_name,
+    )
 
     return OrgMemberDetailResponse(
         id=new_member.id,

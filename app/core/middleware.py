@@ -84,10 +84,14 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         instance=request.url.path,
         request_id=request_id,
     )
+    headers = {"X-Request-ID": request_id}
+    if exc.headers:
+        headers.update(exc.headers)
+
     return JSONResponse(
         status_code=exc.status_code,
         content=payload.model_dump(mode="json"),
-        headers={"X-Request-ID": request_id},
+        headers=headers,
     )
 
 

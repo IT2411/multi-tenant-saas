@@ -8,7 +8,7 @@ from app.core.config import settings
 logger = structlog.get_logger(__name__)
 
 # Initialize async Redis connection pool
-redis_client = aioredis.from_url(
+redis_client = aioredis.from_url(  # type: ignore[no-untyped-call]
     str(settings.REDIS_URI),
     encoding="utf-8",
     decode_responses=True,

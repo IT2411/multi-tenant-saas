@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user, get_db_session
+from app.core.rate_limit import RateLimiter
 from app.models.user import User
 from app.schemas.auth import (
     TokenRefreshRequest,
@@ -16,11 +17,16 @@ from app.services.auth import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+# Rate limiters: 5 login attempts / min, 3 registrations / min
+login_rate_limiter = RateLimiter(requests_per_window=5, window_seconds=60)
+register_rate_limiter = RateLimiter(requests_per_window=3, window_seconds=60)
+
 
 @router.post(
     "/register",
     response_model=TokenResponse,
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(register_rate_limiter)],
     summary="Register a new user and workspace",
 )
 async def register(
@@ -36,6 +42,7 @@ async def register(
     "/login",
     response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
+    dependencies=[Depends(login_rate_limiter)],
     summary="Log in and retrieve token pair",
 )
 async def login(

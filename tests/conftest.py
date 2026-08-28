@@ -7,7 +7,9 @@ from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 from app.core.database import session_manager
+from app.core.redis import redis_client
 from app.main import app
+from app.services.queue import JobQueueService
 
 test_engine = create_async_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
@@ -34,10 +36,21 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
-async def _cleanup_engine_pool() -> AsyncGenerator[None, None]:
+async def _cleanup_pools() -> AsyncGenerator[None, None]:
     yield
-    # Dispose active connections so subsequent tests get fresh connections on their new event loop
+    # 1. Clean SQLAlchemy Pool
     await session_manager.engine.dispose()
+
+    # 2. Clean ARQ Pool
+    if JobQueueService._pool is not None:
+        await JobQueueService._pool.close()
+        JobQueueService._pool = None
+
+    # 3. Flush Redis test db & close connection pool
+    try:
+        await redis_client.flushdb()
+    finally:
+        await redis_client.aclose()
 
 
 @pytest_asyncio.fixture(scope="function")
