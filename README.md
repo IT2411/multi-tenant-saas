@@ -83,59 +83,127 @@ A production-grade, highly concurrent multi-tenant project management backend (L
 ## Project Layout
 
 ```text
-multi_tenant_saas/
-├── .github/
-│   └── workflows/
-│       └── ci.yml               # GitHub Actions CI/CD Pipeline
-├── alembic/
-│   ├── env.py                   # Async database migration engine
-│   ├── script.py.mako           # Migration script template
-│   └── versions/                # DDL migration revisions
-├── app/
-│   ├── main.py                  # ASGI Lifespan, Prometheus metrics, Global error interceptors
-│   ├── api/
-│   │   ├── deps.py              # TenantContext, get_current_user, RequireRole guard
-│   │   └── v1/
-│   │       ├── api.py           # v1 API Router aggregator
-│   │       └── endpoints/
-│   │           ├── attachments.py   # Presigned upload/download & attachment metadata
-│   │           ├── audit.py         # Audit log query API with JSONB diffs
-│   │           ├── auth.py          # /auth with sliding-window RateLimiters
-│   │           ├── comments.py      # /tasks/{id}/comments with Real-Time broadcasts
-│   │           ├── health.py        # /healthz (liveness) & /readyz (readiness)
-│   │           ├── organizations.py # Member invites & role management
-│   │           ├── projects.py      # Project CRUD with OCC & Cache-Aside
-│   │           ├── tasks.py         # Task CRUD (Offset + Keyset pagination, OCC)
-│   │           ├── teams.py         # Team CRUD & team memberships
-│   │           └── ws.py            # WebSocket endpoint /ws/projects/{id}
-│   ├── core/
-│   │   ├── cache.py             # Redis CacheService (Pydantic, SCAN deletion)
-│   │   ├── config.py            # Pydantic v2 settings & computed DSNs
-│   │   ├── database.py          # AsyncEngine & QueuePool manager
-│   │   ├── exceptions.py        # Domain exception hierarchy (RFC 7807)
-│   │   ├── logging.py           # Structlog JSON processor & request tracer
-│   │   ├── middleware.py        # X-Request-ID, latency timer, error interceptor
-│   │   ├── pagination.py        # Base64 Keyset Cursor encoder/decoder
-│   │   ├── rate_limit.py        # Sliding-window RateLimiter (Sorted Sets, 429)
-│   │   ├── redis.py             # Async Redis client & TokenBlacklistService
-│   │   ├── security.py          # Argon2id password hashing & JWT engine
-│   │   └── telemetry.py         # Prometheus Metrics & Instrumentator setup
-│   ├── models/                  # 11 Declarative SQLAlchemy 2.0 async domain models
-│   ├── repositories/            # Data-access layer with TenantScopedRepository
-│   ├── schemas/                 # Pydantic v2 I/O models
-│   ├── services/                # Business logic & UnitOfWork transaction boundaries
-│   ├── websockets/
-│   │   └── hub.py               # WebSocketHub with dynamic Redis pub/sub
-│   └── workers/
-│       ├── arq_app.py           # ARQ WorkerSettings & scheduled cron maintenance
-│       └── tasks.py             # Background tasks & garbage collection sweepers
-├── docker/
-│   ├── Dockerfile               # Multi-stage non-root Python runner
-│   ├── docker-compose.yml       # Production stack: API, Worker, Postgres, Redis, MinIO
-│   └── entrypoint.sh            # Auto-migration runtime script
-├── tests/                       # Complete automated async integration test suite
-├── alembic.ini
-└── pyproject.toml
+multi-tenant-saas/
+├── alembic                                       # Database migrations package (Alembic)
+│   ├── versions                                  # Linear migration history (DDL revisions)
+│   │   ├── 745e36ac4031_create_core_domain_tables.py   # Migration 1: Initial 9 relational domain tables
+│   │   ├── 84d61c534314_add_project_occ_version_id.py  # Migration 2: Adds version_id to projects for OCC
+│   │   └── .gitkeep                              # Git tracking placeholder for empty directory
+│   ├── env.py                                    # Async migration runtime using asyncpg + Base.metadata
+│   └── script.py.mako                            # Mako template for generating new migration scripts
+├── app                                           # Core application root package
+│   ├── api                                       # HTTP Presentation & routing layer
+│   │   ├── v1                                    # API Version 1 routes
+│   │   │   ├── endpoints                         # Individual domain route controllers
+│   │   │   │   ├── attachments.py                # S3 Presigned upload/download URLs & metadata CRUD
+│   │   │   │   ├── audit.py                      # Audit trail querying & JSONB state diff filtering
+│   │   │   │   ├── auth.py                       # User auth (/register, /login, /refresh, /logout, /me)
+│   │   │   │   ├── comments.py                   # Task comments CRUD with real-time room broadcasts
+│   │   │   │   ├── health.py                     # Liveness (/healthz) & Readiness (/readyz) probes
+│   │   │   │   ├── __init__.py                   # Endpoints package initializer
+│   │   │   │   ├── organizations.py              # Org profile, member invites & role management
+│   │   │   │   ├── projects.py                   # Project CRUD with OCC & Cache-Aside lookups
+│   │   │   │   ├── tasks.py                      # Task CRUD (Offset + Keyset pagination, OCC updates)
+│   │   │   │   ├── teams.py                      # Team management & team membership associations
+│   │   │   │   └── ws.py                         # Authenticated WebSocket stream (/ws/projects/{id})
+│   │   │   ├── api.py                            # V1 Router aggregator (mounts all endpoint routers)
+│   │   │   └── __init__.py                       # V1 package initializer
+│   │   ├── deps.py                               # Dependency injection: TenantContext, Auth, RequireRole
+│   │   └── __init__.py                           # API package initializer
+│   ├── core                                      # Cross-cutting foundational modules
+│   │   ├── cache.py                              # Redis CacheService (Typed Pydantic models, SCAN deletion)
+│   │   ├── config.py                             # Pydantic v2 settings & computed DSN properties
+│   │   ├── database.py                           # SQLAlchemy 2.0 AsyncEngine & QueuePool manager
+│   │   ├── exceptions.py                         # Domain exception hierarchy (RFC 7807 problem details)
+│   │   ├── __init__.py                           # Core package initializer
+│   │   ├── logging.py                            # Structlog JSON processor & request context bindings
+│   │   ├── middleware.py                         # Request tracing (X-Request-ID), timing & error handler
+│   │   ├── pagination.py                         # Base64 Keyset Cursor encoder & decoder
+│   │   ├── rate_limit.py                         # Sliding-window RateLimiter using Redis Sorted Sets
+│   │   ├── redis.py                              # Async Redis client & TokenBlacklistService (revocation)
+│   │   ├── security.py                           # Argon2id password hashing & JWT token encoder/decoder
+│   │   └── telemetry.py                          # Prometheus metrics & Instrumentator configuration
+│   ├── models                                    # Declarative SQLAlchemy 2.0 async domain models
+│   │   ├── audit.py                              # Notification & JSONB AuditLog models
+│   │   ├── base.py                               # Reusable mixins: UUID, Timestamp, SoftDelete, TenantScoped
+│   │   ├── enums.py                              # Python 3.11 StrEnums: OrgRole, TaskStatus, Priority, etc.
+│   │   ├── __init__.py                           # Central model registry (exported to Base.metadata)
+│   │   ├── organization.py                       # Organization & OrganizationMember (Role matrix) models
+│   │   ├── project.py                            # Project model (with OCC version_id)
+│   │   ├── task.py                               # Task, Subtask, Comment, Attachment models
+│   │   ├── team.py                               # Team & TeamMember models
+│   │   └── user.py                               # User identity model with hashed credentials
+│   ├── repositories                              # Data access layer (Tenant-scoped database queries)
+│   │   ├── attachment.py                         # AttachmentRepository (task-scoped queries)
+│   │   ├── audit.py                              # AuditLogRepository (filtering by entity, actor, date)
+│   │   ├── base.py                               # Generic BaseRepository & TenantScopedRepository
+│   │   ├── comment.py                            # CommentRepository with chronological cursor feeds
+│   │   ├── __init__.py                           # Repositories package initializer
+│   │   ├── organization.py                       # Organization & OrganizationMember repositories
+│   │   ├── project.py                            # ProjectRepository with key uniqueness checks
+│   │   ├── task.py                               # TaskRepository with dual pagination & filter builders
+│   │   ├── team.py                               # TeamRepository with member eager-loading
+│   │   └── user.py                               # UserRepository with email lookups & eager loading
+│   ├── schemas                                   # Pydantic v2 validation & serialization contracts
+│   │   ├── attachment.py                         # Presigned upload/download & attachment schemas
+│   │   ├── audit.py                              # AuditLogResponse & AuditLogFilterParams schemas
+│   │   ├── auth.py                               # Registration, Login, Token, UserResponse schemas
+│   │   ├── comment.py                            # Comment request and response schemas
+│   │   ├── common.py                             # RFC 7807 ProblemDetailResponse, HealthResponse, Readiness
+│   │   ├── __init__.py                           # Schemas package initializer
+│   │   ├── organization.py                       # Organization update & member invite schemas
+│   │   ├── pagination.py                         # Generic OffsetPageResponse & CursorPageResponse envelopes
+│   │   ├── project.py                            # Project request/response with expected_version
+│   │   ├── task.py                               # Task request/response, filter & sorting schemas
+│   │   └── team.py                               # Team request and response schemas
+│   ├── services                                  # Business logic & UnitOfWork transaction boundaries
+│   │   ├── auth.py                               # AuthService (Atomic registration, token rotation, logout)
+│   │   ├── base.py                               # BaseService & UnitOfWork transaction context manager
+│   │   ├── comment.py                            # CommentService with author/admin permission guards
+│   │   ├── __init__.py                           # Services package initializer
+│   │   ├── organization.py                       # Organization membership management service
+│   │   ├── project.py                            # ProjectService with OCC version check & AuditLog recording
+│   │   ├── queue.py                              # JobQueueService (ARQ async client dispatcher)
+│   │   ├── storage.py                            # S3StorageService (AWS SigV4 Presigned PUT/GET URLs)
+│   │   ├── task.py                               # TaskService with OCC atomic status updates & AuditLog
+│   │   └── team.py                               # TeamService with team member associations
+│   ├── websockets                                # Real-time communication subsystem
+│   │   ├── hub.py                                # WebSocketHub with dynamic Redis Pub/Sub horizontal bus
+│   │   └── __init__.py                           # WebSockets package initializer
+│   ├── workers                                   # Background asynchronous task queue (ARQ)
+│   │   ├── arq_app.py                            # ARQ WorkerSettings & scheduled cron maintenance config
+│   │   ├── __init__.py                           # Workers package initializer
+│   │   └── tasks.py                              # Background worker jobs & soft-delete GC sweepers
+│   ├── __init__.py                               # App package initializer
+│   └── main.py                                   # FastAPI ASGI factory, lifespan manager & Prometheus mount
+├── docker                                        # Containerization & orchestration files
+│   ├── docker-compose.yml                        # Multi-service stack (API, Worker, Postgres, Redis, MinIO)
+│   ├── Dockerfile                                # Multi-stage minimal runner with non-root saasuser
+│   ├── .dockerignore                             # Build context exclusion rules (Docker context folder)
+│   └── entrypoint.sh                             # Container startup entrypoint (runs Alembic migrations)
+├── .github                                       # CI/CD Automation
+│   └── workflows
+│       └── ci.yml                                # GitHub Actions workflow (Lint, Type, Migrations, Test)
+├── tests                                         # Automated async integration & security test suite
+│   ├── conftest.py                               # Isolated NullPool & Redis cleanup test harness
+│   ├── test_audit_occ_maintenance.py             # Phase 7: Audit queries, Project OCC, and Sweeper tests
+│   ├── test_auth_rbac.py                         # Phase 3: Registration, login, token rotation, RBAC tests
+│   ├── test_caching_rate_limit_jobs.py           # Phase 5: Cache-Aside & 429 rate limit tests
+│   ├── test_concurrency_race.py                  # Phase 8: 10x simultaneous OCC race condition tests
+│   ├── test_domain_models.py                     # Phase 2: Database constraints & OCC concurrency tests
+│   ├── test_files_and_websockets.py              # Phase 6: S3 Presigned URLs & Attachments tests
+│   ├── test_foundation.py                        # Phase 1: Middleware & RFC 7807 error format tests
+│   ├── test_multi_tenant_api.py                  # Phase 4: Multi-tenant isolation & REST API tests
+│   ├── test_observability.py                     # Phase 9: /healthz, /readyz & Prometheus /metrics tests
+│   └── test_security_hardening.py                # Phase 8: Cross-tenant attack, JWT tampering & SQLi tests
+├── alembic.ini                                   # Alembic CLI & logging configuration
+├── .dockerignore                                 # Root build context exclusion rules
+├── .env                                          # Local environment variables (Ignored by Git)
+├── .env.example                                  # Template for required environment variables
+├── .gitignore                                    # Git exclusion rules
+├── .pre-commit-config.yaml                       # Git pre-commit hooks (Ruff, Mypy)
+├── pyproject.toml                                # Build system, dependency bounds, Ruff & Mypy configs
+└── README.md                                     # Production documentation & architecture manual
 ```
 
 ---
