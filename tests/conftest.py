@@ -6,9 +6,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
+from app.core.database import session_manager
 from app.main import app
 
-# Use NullPool for tests so connections are never reused across separate event loops
 test_engine = create_async_engine(
     str(settings.SQLALCHEMY_DATABASE_URI),
     poolclass=NullPool,
@@ -31,6 +31,13 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         finally:
             await session.rollback()
             await session.close()
+
+
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def _cleanup_engine_pool() -> AsyncGenerator[None, None]:
+    yield
+    # Dispose active connections so subsequent tests get fresh connections on their new event loop
+    await session_manager.engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
