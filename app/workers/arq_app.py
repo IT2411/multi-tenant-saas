@@ -1,5 +1,6 @@
-from collections.abc import Sequence
-from typing import Any, Callable, ClassVar
+from collections.abc import Callable, Sequence
+from typing import Any, ClassVar
+
 from arq import cron
 from arq.connections import RedisSettings
 

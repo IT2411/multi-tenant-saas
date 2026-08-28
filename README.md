@@ -1,6 +1,6 @@
 # Enterprise Multi-Tenant SaaS Project Management Platform
 
-[![CI/CD Quality Pipeline](https://github.com/IT2411/multi_tenant_saas/actions/workflows/ci.yml/badge.svg)](https://github.com/IT2411/multi_tenant_saas/actions/workflows/ci.yml)
+**CI/CD Quality Pipeline**
 [![Python Version](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111%2B-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791.svg?logo=postgresql)](https://www.postgresql.org/)
