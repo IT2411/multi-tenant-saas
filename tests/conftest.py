@@ -44,7 +44,7 @@ async def _cleanup_pools() -> AsyncGenerator[None, None]:
 
     # 2. Clean ARQ Pool
     if JobQueueService._pool is not None:
-        await JobQueueService._pool.close()
+        await JobQueueService._pool.aclose()
         JobQueueService._pool = None
 
     # 3. Clean WebSocket Hub Sub Client
