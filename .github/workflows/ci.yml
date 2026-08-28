@@ -1,80 +1,63 @@
-# .github/workflows/ci.yml
-name: Engine CI Quality & Security Pipeline
+name: Enterprise SaaS CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, master, staging, develop ]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, master, staging, develop ]
+    branches: [ main, master, develop ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  static-analysis:
-    name: Code Formatting & Static Analysis
+  lint-and-types:
+    name: Code Quality & Static Typing
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           cache: "pip"
 
-      - name: Install Linting Tools
+      - name: Install Linting & Type Tools
         run: |
           python -m pip install --upgrade pip
           pip install ruff mypy
 
-      - name: Execute Ruff Formatting Inspection
-        run: ruff format --check .
+      - name: Inspect Formatting
+        run: ruff format --check app tests
 
-      - name: Execute Ruff Static Linter
-        run: ruff check .
+      - name: Execute Linter
+        run: ruff check app tests
 
-  type-safety:
-    name: Static Type Analysis (Mypy)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: "pip"
-
-      - name: Install Dependencies
+      - name: Run Mypy Type Safety Gate
         run: |
-          python -m pip install --upgrade pip
           pip install .[dev]
-
-      - name: Run Mypy Type Checker
-        run: mypy app
+          mypy app
 
   integration-tests:
-    name: Async Integration Suite
+    name: Async Integration & Security Test Suite
     runs-on: ubuntu-latest
-    needs: [static-analysis, type-safety]
+    needs: [lint-and-types]
     services:
       postgres:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres_user
           POSTGRES_PASSWORD: postgres_password
-          POSTGRES_DB: test_jira_saas
+          POSTGRES_DB: test_multi_tenant_saas
         ports:
           - 5432:5432
         options: >-
           --health-cmd pg_isready
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 5
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 10
 
       redis:
         image: redis:7-alpine
@@ -82,18 +65,28 @@ jobs:
           - 6379:6379
         options: >-
           --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
+          --health-interval 3s
+          --health-timeout 3s
           --health-retries 5
+
+      minio:
+        image: minio/minio:latest
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadminpassword
+        ports:
+          - 9000:9000
+        options: >-
+          server /data
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
           cache: "pip"
 
       - name: Install Application & Test Harness
@@ -101,17 +94,51 @@ jobs:
           python -m pip install --upgrade pip
           pip install .[dev]
 
-      - name: Execute Async Test Suite with Coverage
+      - name: Apply Database Migrations
         env:
           ENVIRONMENT: testing
-          SECRET_KEY: test-secret-key-not-for-production-usage-at-all-abcdef123
+          SECRET_KEY: ci-test-secret-key-1234567890-abcdefghijklmnop
           POSTGRES_SERVER: localhost
           POSTGRES_PORT: 5432
           POSTGRES_USER: postgres_user
           POSTGRES_PASSWORD: postgres_password
-          POSTGRES_DB: test_jira_saas
+          POSTGRES_DB: test_multi_tenant_saas
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-        run: |
-          alembic upgrade head
-          pytest --cov=app --cov-report=xml --cov-report=term-missing tests/
+        run: alembic upgrade head
+
+      - name: Execute Pytest Suite with Coverage
+        env:
+          ENVIRONMENT: testing
+          SECRET_KEY: ci-test-secret-key-1234567890-abcdefghijklmnop
+          POSTGRES_SERVER: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres_user
+          POSTGRES_PASSWORD: postgres_password
+          POSTGRES_DB: test_multi_tenant_saas
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
+          S3_ENDPOINT_URL: http://localhost:9000
+          S3_ACCESS_KEY: minioadmin
+          S3_SECRET_KEY: minioadminpassword
+          S3_BUCKET_NAME: saas-attachments
+        run: pytest --cov=app --cov-report=xml --cov-report=term-missing tests/
+
+  docker-build:
+    name: Multi-Stage Docker Image Build
+    runs-on: ubuntu-latest
+    needs: [integration-tests]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Application Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          tags: multi-tenant-saas-platform:latest

@@ -9,7 +9,6 @@ async def test_health_check_returns_ok(client: AsyncClient) -> None:
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["status"] == "healthy"
-    assert data["database_connected"] is True
     assert "timestamp" in data
     assert "X-Request-ID" in response.headers
     assert "X-Response-Time-MS" in response.headers
@@ -20,5 +19,5 @@ async def test_404_rfc7807_error_format(client: AsyncClient) -> None:
     response = await client.get("/api/v1/non-existent-endpoint")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     data = response.json()
-    assert data["title"] == "Internal Application Error" or "detail" in data
+    assert data["title"] == "HTTP Error" or data["title"] == "Internal Application Error"
     assert "request_id" in data

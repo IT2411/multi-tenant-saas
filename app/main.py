@@ -19,6 +19,8 @@ from app.core.middleware import (
     http_exception_handler,
     validation_exception_handler,
 )
+from app.core.telemetry import setup_telemetry
+from app.services.storage import S3StorageService
 
 setup_logging()
 logger = structlog.get_logger(__name__)
@@ -32,12 +34,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         project_name=settings.PROJECT_NAME,
         env=settings.ENVIRONMENT,
     )
+    # 1. Warm up database connection pool
     try:
         is_healthy = await session_manager.health_check()
         logger.info("database_connectivity_verified", pool_status=is_healthy)
     except Exception as exc:
         logger.critical("database_initialization_failed", exc_info=exc)
         raise exc
+
+    # 2. Verify / Provision Object Storage Bucket
+    try:
+        storage = S3StorageService()
+        await storage.ensure_bucket_exists()
+        logger.info("storage_bucket_verified", bucket=settings.S3_BUCKET_NAME)
+    except Exception as exc:
+        logger.warning("storage_bucket_init_warning", error=str(exc))
 
     yield
 
@@ -57,6 +68,10 @@ def create_application() -> FastAPI:
         redoc_url=f"{settings.API_V1_STR}/redoc" if settings.ENVIRONMENT != "production" else None,
         lifespan=lifespan,
     )
+
+    # Telemetry
+    telemetry = setup_telemetry(application)
+    telemetry.expose(application, endpoint="/metrics")
 
     application.add_middleware(
         CORSMiddleware,

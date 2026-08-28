@@ -1,6 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Stage 1: Build virtual environment dependencies
-FROM python:3.12-slim-bookworm AS builder
+FROM python:3.11-slim-bookworm AS builder
 
 WORKDIR /build
 
@@ -15,31 +14,35 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml .
-RUN pip install --upgrade pip && \
-    pip install hatchling && \
-    pip install --prefix=/install .
+# Build dependencies in virtual environment /opt/venv
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Stage 2: Final minimal production runtime image
-FROM python:3.12-slim-bookworm AS runner
+COPY pyproject.toml README.md* ./
+RUN touch README.md && \
+    pip install --upgrade pip && \
+    pip install hatchling && \
+    pip install .
+
+FROM python:3.11-slim-bookworm AS runner
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH="/app" \
-    PATH="/install/bin:$PATH"
+    PATH="/opt/venv/bin:$PATH"
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Security: Create non-root system group and user
+# Non-root user
 RUN groupadd -g 10001 saasgroup && \
     useradd -u 10001 -g saasgroup -s /sbin/nologin -d /app saasuser
 
-COPY --from=builder /install /install
+COPY --from=builder /opt/venv /opt/venv
 COPY --chown=saasuser:saasgroup . /app
 COPY --chown=saasuser:saasgroup docker/entrypoint.sh /entrypoint.sh
 

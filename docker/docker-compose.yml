@@ -1,25 +1,25 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: saas_postgres_dev
+    container_name: saas_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres_user
       POSTGRES_PASSWORD: postgres_password
-      POSTGRES_DB: jira_saas_dev
+      POSTGRES_DB: multi_tenant_saas_dev
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres_user -d jira_saas_dev"]
+      test: ["CMD-SHELL", "pg_isready -U postgres_user -d multi_tenant_saas_dev"]
       interval: 3s
       timeout: 3s
       retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: saas_redis_dev
+    container_name: saas_redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -33,7 +33,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: saas_minio_dev
+    container_name: saas_minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -49,20 +49,50 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: saas_api_dev
+    container_name: saas_api
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
-      ENVIRONMENT: development
+      ENVIRONMENT: production
       POSTGRES_SERVER: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: postgres_user
       POSTGRES_PASSWORD: postgres_password
-      POSTGRES_DB: jira_saas_dev
+      POSTGRES_DB: multi_tenant_saas_dev
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      SECRET_KEY: dev-insecure-secret-key-must-be-changed-in-prod-09d25e094faa6
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadminpassword
+      S3_BUCKET_NAME: saas-attachments
+      SECRET_KEY: 09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: saas_worker
+    restart: unless-stopped
+    command: arq app.workers.arq_app.WorkerSettings
+    environment:
+      ENVIRONMENT: production
+      POSTGRES_SERVER: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: postgres_user
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: multi_tenant_saas_dev
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadminpassword
+      S3_BUCKET_NAME: saas-attachments
     depends_on:
       postgres:
         condition: service_healthy

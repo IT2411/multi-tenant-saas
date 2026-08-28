@@ -39,7 +39,14 @@ class ProblemDetailResponse(CoreModel):
 class HealthResponse(CoreModel):
     status: str
     environment: str
-    database_connected: bool
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class ReadinessResponse(CoreModel):
+    status: str
+    database: bool
+    redis: bool
+    storage: bool
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

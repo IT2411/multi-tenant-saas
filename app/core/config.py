@@ -29,7 +29,7 @@ class AppSettings(BaseSettings):
     )
 
     ENVIRONMENT: Literal["development", "testing", "production"] = "development"
-    PROJECT_NAME: str = "JiraSaaS Platform Engine"
+    PROJECT_NAME: str = "MultiTenantSaaS Platform Engine"
     API_V1_STR: str = "/api/v1"
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
@@ -44,7 +44,7 @@ class AppSettings(BaseSettings):
     POSTGRES_PORT: int = 5432
     POSTGRES_USER: str = "postgres_user"
     POSTGRES_PASSWORD: str = "postgres_password"
-    POSTGRES_DB: str = "jira_saas_dev"
+    POSTGRES_DB: str = "multi_tenant_saas_dev"
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
     DATABASE_POOL_TIMEOUT: int = 30

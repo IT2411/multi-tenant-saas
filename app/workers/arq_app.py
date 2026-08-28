@@ -1,6 +1,5 @@
-from collections.abc import Callable, Sequence
-from typing import Any, ClassVar
-
+from collections.abc import Sequence
+from typing import Any, Callable, ClassVar
 from arq import cron
 from arq.connections import RedisSettings
 
@@ -21,7 +20,11 @@ class WorkerSettings:
         cleanup_soft_deleted_tasks_job,
     ]
     cron_jobs: ClassVar[list[Any]] = [
-        cron("cleanup_soft_deleted_tasks_job", hour=3, minute=0),  # Runs daily at 03:00 UTC
+        cron(
+            "app.workers.tasks.cleanup_soft_deleted_tasks_job",
+            hour=3,
+            minute=0,
+        ),  # Runs daily at 03:00 UTC
     ]
     redis_settings = RedisSettings(
         host=settings.REDIS_HOST,
