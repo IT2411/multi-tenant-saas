@@ -1,0 +1,95 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jira-saas-core"
+version = "0.1.0"
+description = "Multi-Tenant Enterprise SaaS Project Management Engine"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic[email]>=2.7.4",
+    "pydantic-settings>=2.3.4",
+    "sqlalchemy>=2.0.31",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.2",
+    "redis[hiredis]>=5.0.7",
+    "structlog>=24.2.0",
+    "rich>=13.7.1",
+    "python-multipart>=0.0.9",
+    "httpx>=0.27.0",
+    "orjson>=3.10.6"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2.2",
+    "pytest-asyncio>=0.23.7",
+    "pytest-cov>=5.0.0",
+    "ruff>=0.5.0",
+    "mypy>=1.10.1",
+    "pre-commit>=3.7.1"
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [
+    ".venv",
+    "alembic/versions",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+    "ARG", # flake8-unused-arguments
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+    "ERA", # eradicate
+    "PL",  # pylint
+    "RUF"  # ruff-specific
+]
+ignore = [
+    "E501",    # Line length enforced by ruff format
+    "PLR0913", # Allow dependency injection parameter lists
+    "PLR0917", # Allow flexible service method parameters
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["PLR2004"] # Allow magic values in tests
+
+[tool.mypy]
+python_version = "3.11"
+plugins = ["pydantic.mypy"]
+strict = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--strict-markers --tb=short -ra -q"
